@@ -1,0 +1,69 @@
+@import "tailwindcss"; 
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light;
+  color: #213547;
+  background-color: #ffffff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* optional tiny design tokens */
+.btn { @apply inline-flex items-center px-3 py-1.5 rounded bg-emerald-700 text-white hover:bg-emerald-600 active:bg-emerald-800 transition; }
+.btn-light { @apply inline-flex items-center px-3 py-1.5 rounded bg-white text-emerald-800 hover:bg-white/90 shadow-sm; }
+.card { @apply rounded-xl border p-3 bg-white shadow-sm; }
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  display: block;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Sports app theme helpers */
+.app-header { @apply bg-gradient-to-r from-emerald-800 to-emerald-700 text-white shadow-lg; }
+.brand { @apply text-xl font-bold tracking-wide uppercase; }
+.header-link { @apply text-sm text-white/80 hover:text-white; }
+.nav-tab { @apply px-3 py-1.5 rounded-md text-white/80 hover:text-white hover:bg-white/10; }
+.nav-tab-active { @apply bg-white/20 text-white font-semibold; }
+.badge { @apply inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 text-white text-xs; }
+.bg-surface { @apply bg-slate-50; }
+
+/* Sidebar (light background) */
+.side-link { @apply px-3 py-2 rounded-md text-emerald-800 hover:bg-emerald-50; }
+.side-link-active { @apply bg-emerald-100 text-emerald-900 font-semibold; }
+.badge-light { @apply inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs; }
+
+/* My Picks selection buttons */
+.pick-btn { @apply inline-flex items-center px-3 py-1.5 rounded-md border bg-white text-emerald-800 hover:bg-emerald-50 transition; }
+.pick-selected { @apply bg-emerald-700 text-white border-emerald-700 hover:bg-emerald-700; }
+.pick-dim { @apply opacity-60 grayscale; }
