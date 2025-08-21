@@ -26,7 +26,7 @@ export default function AppLayout() {
                 if (last) {
                   nav(`/l/${last}/leaderboard/2025-W01`);
                 } else {
-                  nav("/profile");
+                  nav("/leagues/start");
                 }
               }}
               className="brand text-white"
@@ -42,6 +42,9 @@ export default function AppLayout() {
 
           {/* Right: auth/profile */}
           <div className="ml-auto flex items-center gap-3">
+            {code && (
+              <span className="hidden md:inline-flex badge">Code: <strong className="ml-1 tracking-wider">{code}</strong></span>
+            )}
             {user ? (
               <>
                 <Link to="/profile" className="header-link">My Profile</Link>
@@ -57,11 +60,11 @@ export default function AppLayout() {
         </div>
       </header>
 
-      <main className="container mx-auto p-4">
+      <main className="container mx-auto p-4 pb-24">
         {leagueId ? (
           <div className="grid grid-cols-12 gap-4">
             {/* Sidebar */}
-            <aside className="col-span-12 md:col-span-3 lg:col-span-2">
+            <aside className="hidden md:block md:col-span-3 lg:col-span-2">
               <div className="card sticky top-16">
                 <nav className="flex flex-col gap-1 text-sm">
                   <NavLink to={`/l/${leagueId}/leaderboard/2025-W01`} className={({isActive})=>`side-link ${isActive ? 'side-link-active' : ''}`}>Leaderboard</NavLink>
@@ -91,6 +94,23 @@ export default function AppLayout() {
           <Outlet />
         )}
       </main>
+
+      {/* Mobile bottom tab bar */}
+      {leagueId && (
+        <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t shadow-lg z-40">
+          <div className="grid grid-cols-5 text-xs">
+            <NavLink to={`/l/${leagueId}/leaderboard/2025-W01`} className={({isActive})=>`flex flex-col items-center justify-center py-2 ${isActive ? 'text-emerald-700 font-semibold' : 'text-slate-600'}`}>Leaderboard</NavLink>
+            <NavLink to={`/l/${leagueId}/picks/2025-W01`} className={({isActive})=>`flex flex-col items-center justify-center py-2 ${isActive ? 'text-emerald-700 font-semibold' : 'text-slate-600'}`}>Picks</NavLink>
+            <NavLink to={`/l/${leagueId}/compare/2025-W01`} className={({isActive})=>`flex flex-col items-center justify-center py-2 ${isActive ? 'text-emerald-700 font-semibold' : 'text-slate-600'}`}>Compare</NavLink>
+            <NavLink to={`/l/${leagueId}/members`} className={({isActive})=>`flex flex-col items-center justify-center py-2 ${isActive ? 'text-emerald-700 font-semibold' : 'text-slate-600'}`}>Members</NavLink>
+            {(role === 'owner' || role === 'admin') ? (
+              <NavLink to={`/l/${leagueId}/admin/select-games/2025-W01`} className={({isActive})=>`flex flex-col items-center justify-center py-2 ${isActive ? 'text-emerald-700 font-semibold' : 'text-slate-600'}`}>Admin</NavLink>
+            ) : (
+              <span className="flex flex-col items-center justify-center py-2 text-slate-300">Admin</span>
+            )}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

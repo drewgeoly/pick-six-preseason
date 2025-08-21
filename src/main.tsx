@@ -18,6 +18,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
 import LeaguesCreate from "./pages/LeaguesCreate";
 import LeaguesJoin from "./pages/LeaguesJoin";
+import LeaguesStart from "./pages/LeaguesStart";
 
 // League-scoped pages
 import Leaderboard from "./pages/Leaderboard";
@@ -46,6 +47,7 @@ const router = createBrowserRouter([
 
       // Require auth for these pages
       { element: <RequireAuth /> , children: [
+        { path: "/leagues/start", element: <LeaguesStart /> },
         { path: "/profile", element: <Profile /> },
         { path: "/leagues/create", element: <LeaguesCreate /> },
         { path: "/leagues/join", element: <LeaguesJoin /> },

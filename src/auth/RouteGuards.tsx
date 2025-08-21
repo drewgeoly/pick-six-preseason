@@ -13,9 +13,9 @@ export function RedirectIfAuth({ to }: { to?: string }) {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Outlet />;
-  // If they are logged in, go to last league, else to profile
+  // If they are logged in, go to last league, else to leagues start (create/join)
   const lastLeague = localStorage.getItem("lastLeagueId");
-  const target = to || (lastLeague ? `/l/${lastLeague}/leaderboard/2025-W01` : "/profile");
+  const target = to || (lastLeague ? `/l/${lastLeague}/leaderboard/2025-W01` : "/leagues/start");
   return <Navigate to={target} replace />;
 }
 
