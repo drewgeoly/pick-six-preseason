@@ -26,9 +26,11 @@ export default function LeaguesJoin(){
       }
     }
 
-    // membership
+    // membership (store a snapshot of name/email for reliable display)
     await setDoc(doc(db,"leagues",league.id,"members",user.uid), {
-      role:"member", joinedAt: serverTimestamp()
+      role:"member", joinedAt: serverTimestamp(),
+      displayName: user.displayName ?? null,
+      email: user.email ?? null,
     }, { merge:true });
     // reverse index
     await setDoc(doc(db,"users",user.uid,"leagues",league.id), {

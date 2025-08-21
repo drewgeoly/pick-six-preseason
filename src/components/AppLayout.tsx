@@ -2,7 +2,8 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { useLeague } from "../league/LeagueProvider";
 import LeagueSwitcher from "./LeagueSwitcher";
-import { auth } from "../lib/firebase";
+import { auth, db } from "../lib/firebase";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 
 // inside component:
 
@@ -19,13 +20,22 @@ export default function AppLayout() {
           <div className="flex items-center gap-4">
             <Link
               to="/"
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.preventDefault();
                 if (!user) { nav("/login"); return; }
                 const last = localStorage.getItem("lastLeagueId");
-                if (last) {
-                  nav(`/l/${last}/leaderboard/2025-W01`);
-                } else {
+                if (last) { nav(`/l/${last}/leaderboard/2025-W01`); return; }
+                try {
+                  const q = query(collection(db, "users", user.uid, "leagues"), orderBy("joinedAt", "desc"), limit(1));
+                  const snap = await getDocs(q);
+                  if (!snap.empty) {
+                    const id = snap.docs[0].id;
+                    localStorage.setItem("lastLeagueId", id);
+                    nav(`/l/${id}/leaderboard/2025-W01`);
+                  } else {
+                    nav("/leagues/start");
+                  }
+                } catch {
                   nav("/leagues/start");
                 }
               }}

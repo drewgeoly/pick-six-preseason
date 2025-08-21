@@ -33,9 +33,11 @@ export default function LeaguesCreate(){
       name, code, ownerUid: user.uid, maxMembers,
       createdAt: serverTimestamp(), updatedAt: serverTimestamp()
     });
-    // membership
+    // membership (store a snapshot of name/email for reliable display)
     await setDoc(doc(db,"leagues",leagueRef.id,"members",user.uid), {
-      role:"owner", joinedAt: serverTimestamp()
+      role:"owner", joinedAt: serverTimestamp(),
+      displayName: user.displayName ?? null,
+      email: user.email ?? null,
     });
     // reverse index (what the switcher reads)
     await setDoc(doc(db,"users",user.uid,"leagues",leagueRef.id), {
