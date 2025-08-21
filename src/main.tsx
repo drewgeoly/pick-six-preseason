@@ -78,7 +78,10 @@ const router = createBrowserRouter([
       },
     ],
   },
-]);
+], {
+  // Ensure routing works under GitHub Pages subpath like "/pick-six-preseason/"
+  basename: import.meta.env.BASE_URL,
+});
 
 // Security check: in production, ensure no sensitive client env vars are present
 assertNoPublicSecrets();
