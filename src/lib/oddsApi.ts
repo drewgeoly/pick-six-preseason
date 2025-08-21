@@ -1,6 +1,10 @@
 // src/lib/oddsApi.ts
 const BASE = "https://api.the-odds-api.com/v4";
-const KEY = import.meta.env.VITE_ODDS_API_KEY as string;
+// Optional client-side key: allowed only for local/dev usage. Do NOT provide in production.
+const KEY = import.meta.env.VITE_ODDS_API_KEY as string | undefined;
+// Preferred: serverless proxy URL that calls The Odds API with a server-side secret.
+// e.g., https://your-worker.example.com/odds (expects same path/query forward)
+const PROXY = import.meta.env.VITE_ODDS_PROXY_URL as string | undefined;
 
 // helper: format ISO without milliseconds
 function isoNoMillis(d: Date) {
@@ -89,14 +93,27 @@ export async function listScoresBySportKey(sportKey: string, opts?: { daysFrom?:
 }
 
 async function req<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<T> {
-  if (!KEY) throw new Error("Missing VITE_ODDS_API_KEY");
-  const qs = new URLSearchParams({ apiKey: KEY, ...Object.fromEntries(Object.entries(params).map(([k,v])=>[k,String(v)])) }).toString();
+  const baseParams = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]));
+  // If a proxy is configured, use it and DO NOT send apiKey from the client.
+  if (PROXY) {
+    const qs = new URLSearchParams(baseParams as Record<string, string>).toString();
+    const url = `${PROXY}${path}?${qs}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json() as Promise<T>;
+  }
+
+  // Fallback: allow direct API usage only when a client key is provided (development).
+  if (!KEY) {
+    throw new Error("No odds proxy configured. Set VITE_ODDS_PROXY_URL to a serverless endpoint that calls The Odds API with a server-side key. For local dev only, you may set VITE_ODDS_API_KEY.");
+  }
+  const qs = new URLSearchParams({ apiKey: KEY, ...(baseParams as Record<string, string>) }).toString();
   const url = `${BASE}${path}?${qs}`;
   const res = await fetch(url);
   if (!res.ok) {
     // Soft-retry: if 422 due to date formatting or range, try again without date filter
     if (res.status === 422 && ("commenceTimeFrom" in params || "commenceTimeTo" in params)) {
-      const url2 = `${BASE}${path}?${new URLSearchParams({ apiKey: KEY }).toString()}`;
+      const url2 = `${BASE}${path}?${new URLSearchParams({ apiKey: KEY! }).toString()}`;
       const res2 = await fetch(url2);
       if (res2.ok) return res2.json() as Promise<T>;
     }

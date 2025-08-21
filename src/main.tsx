@@ -3,6 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import { assertNoPublicSecrets } from "./lib/envGuards";
 
 import { AuthProvider } from "./auth/AuthProvider";
 import AppLayout from "./components/AppLayout";
@@ -78,6 +79,9 @@ const router = createBrowserRouter([
     ],
   },
 ]);
+
+// Security check: in production, ensure no sensitive client env vars are present
+assertNoPublicSecrets();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
