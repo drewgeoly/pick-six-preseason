@@ -29,6 +29,8 @@ jobs:
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          # Use Cloudflare Worker proxy in production builds (do not expose API keys)
+          VITE_ODDS_PROXY_URL: ${{ secrets.VITE_ODDS_PROXY_URL }}
           # Optional: override base path if needed
           VITE_BASE: /pick-six-preseason/
       - uses: actions/upload-pages-artifact@v3

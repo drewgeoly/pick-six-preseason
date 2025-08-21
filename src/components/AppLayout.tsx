@@ -26,7 +26,7 @@ export default function AppLayout() {
                 if (last) {
                   nav(`/l/${last}/leaderboard/2025-W01`);
                 } else {
-                  nav("/leagues/create");
+                  nav("/profile");
                 }
               }}
               className="brand text-white"

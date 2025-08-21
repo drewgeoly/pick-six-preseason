@@ -2,8 +2,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
-import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { assertNoPublicSecrets } from "./lib/envGuards";
+import Welcome from "./pages/Welcome";
 
 import { AuthProvider } from "./auth/AuthProvider";
 import AppLayout from "./components/AppLayout";
@@ -29,8 +30,8 @@ import MakePicks from "./pages/MakePicks"; // or your picks page
 import Members from "./pages/Members";
 
 const router = createBrowserRouter([
-  // Redirect "/" to something real
-  { path: "/", element: <Navigate to="/login" replace /> },
+  // Welcome landing with clear Log in / Sign up
+  { path: "/", element: <Welcome /> },
 
   // Public area under AppLayout
   {

@@ -1,0 +1,8 @@
+name = "pick-six-odds-proxy"
+main = "src/worker.ts"
+compatibility_date = "2024-09-01"
+workers_dev = true
+
+[vars]
+# Optional: restrict CORS to a specific origin, e.g. your GitHub Pages URL
+# ALLOWED_ORIGIN = "https://drewgeoly.github.io"

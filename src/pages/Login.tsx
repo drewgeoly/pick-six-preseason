@@ -18,12 +18,12 @@ export default function Login() {
       await setPersistence(auth, browserLocalPersistence);
       await signInWithEmailAndPassword(auth, email, pw);
 
-      // after login, send somewhere that exists
+      // After login, go to last league if known, else to Profile
       const lastLeague = localStorage.getItem("lastLeagueId");
       if (lastLeague) {
         nav(`/l/${lastLeague}/leaderboard/2025-W01`, { replace: true });
       } else {
-        nav("/leagues/join", { replace: true });
+        nav("/profile", { replace: true });
       }
     } catch (e: any) {
       setErr(e.message || "Login failed");
