@@ -104,10 +104,8 @@ export default function AdminSelectGames() {
   const [tiebreakerKey, setTiebreakerKey] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const [members, setMembers] = useState<Array<{ uid: string; email?: string; name?: string }>>([]);
   const [pickStatus, setPickStatus] = useState<{ complete: string[]; missing: string[] }>({ complete: [], missing: [] });
   const [reminding, setReminding] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const selectedEvents = useMemo(
     () => events.filter((e) => selected[e.key]),
@@ -183,14 +181,13 @@ export default function AdminSelectGames() {
     });
   }, [events.map(e=>e.key).join(',')]);
 
-  // Load members and pick status for current week
+  // Load pick status for current week
   useEffect(() => {
     (async () => {
       if (!leagueId || !weekId) return;
       try {
         const memSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
         const mem = memSnap.docs.map(d => ({ uid: d.id, ...(d.data() as any) })).map(m => ({ uid: m.uid, email: m.email, name: m.displayName || m.name }));
-        setMembers(mem);
         const picksSnap = await getDocs(collection(db, "leagues", leagueId, "weeks", weekId, "userPicks"));
         const byUid: Record<string, any> = {};
         picksSnap.docs.forEach(d => { byUid[d.id] = d.data(); });
@@ -208,7 +205,7 @@ export default function AdminSelectGames() {
         // noop
       }
     })();
-  }, [leagueId, weekId, saving, msg]);
+  }, [leagueId, weekId, msg]);
 
   async function onSendReminders() {
     if (!leagueId || !weekId) return;
@@ -305,6 +302,18 @@ export default function AdminSelectGames() {
         />
         <span className="ml-auto text-sm">Selected: {selectedEvents.length}/6</span>
         <button className="btn" onClick={saveWeek}>Save Week</button>
+      </div>
+      {/* Pick status and reminders */}
+      <div className="mb-3 flex items-center gap-3 text-sm">
+        <span className="badge-light">Complete: {pickStatus.complete.length}</span>
+        <span className="badge-light">Missing: {pickStatus.missing.length}</span>
+        <button
+          className="btn"
+          onClick={onSendReminders}
+          disabled={reminding || pickStatus.missing.length === 0}
+        >
+          {reminding ? 'Sending…' : 'Send reminders'}
+        </button>
       </div>
       {err && <div className="text-red-600 mb-2 text-sm">{err}</div>}
       {msg && <div className="text-emerald-700 mb-2 text-sm">{msg}</div>}
