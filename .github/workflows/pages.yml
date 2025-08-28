@@ -24,6 +24,14 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
+      - name: Create .env.production
+        run: |
+          : > .env.production
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}" >> .env.production
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}" >> .env.production
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env.production
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}" >> .env.production
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}" >> .env.production
       - name: Install deps
         run: npm ci
       - name: Build
