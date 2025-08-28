@@ -1,23 +1,28 @@
-import { addDoc, collection, doc, getDocs, serverTimestamp, setDoc, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { FALLBACK_WEEK_ID, getDefaultWeekId } from "../lib/weeks";
 
 async function generateUniqueCode(): Promise<string> {
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing chars
-    const make = () => Array.from({length:6}, () => alphabet[Math.floor(Math.random()*alphabet.length)]).join("");
-    let tries = 0;
-    while (tries < 5) {
-      const code = make();
-      // check if any league already has this code
-      const q = await getDocs(query(collection(db,"leagues"), where("code","==",code)));
-      if (q.empty) return code;
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing chars
+  const make = () => Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  let tries = 0;
+  while (tries < 8) {
+    const code = tries < 6 ? make() : make() + alphabet[Math.floor(Math.random() * alphabet.length)];
+    try {
+      // Reserve the code by creating leagueCodes/{code}. Rules allow create only if it does not exist.
+      await setDoc(doc(db, "leagueCodes", code), { createdAt: serverTimestamp() });
+      return code;
+    } catch (e) {
+      // create denied because it exists; try another
       tries++;
+      continue;
     }
-    // super-rare: fallback to 7 chars
-    return make() + alphabet[Math.floor(Math.random()*alphabet.length)];
   }
+  // Extremely unlikely; fallback
+  return make() + alphabet[Math.floor(Math.random() * alphabet.length)];
+}
 export default function LeaguesCreate(){
   const { user } = useAuth(); const nav = useNavigate();
 

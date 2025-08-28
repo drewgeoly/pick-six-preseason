@@ -39,11 +39,20 @@ service cloud.firestore {
       // Basic league doc readable by members
       allow read: if isMember(leagueId);
 
+      // Allow authenticated users to create a new league where they are the owner
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      // Allow owner/admin to update league metadata
+      allow update: if isAdmin(leagueId);
+
       // Members subcollection: members can read; owners/admins write configured elsewhere
       match /members/{memberId} {
         allow read: if isMember(leagueId);
-        // Writes restricted; adjust as needed
-        allow write: if false;
+        // Allow owner/admin to manage members
+        allow write: if isAdmin(leagueId);
+        // Allow initial owner membership creation by the league owner (immediately after league create)
+        allow create: if request.auth != null
+                      && memberId == request.auth.uid
+                      && get(/databases/$(database)/documents/leagues/$(leagueId)).data.ownerUid == request.auth.uid;
       }
 
       // Weeks and nested scores readable by members
@@ -80,6 +89,22 @@ service cloud.firestore {
         // Write by backend only
         allow write: if false;
       }
+    }
+
+    // Allow users to maintain their own reverse league index (users/{uid}/leagues/{leagueId})
+    match /users/{userId}/leagues/{leagueId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Unique league code reservation: create-once docs at leagueCodes/{code}
+    match /leagueCodes/{code} {
+      // Allow authenticated users to reserve a code if it does not already exist
+      allow create: if request.auth != null &&
+                    !exists(/databases/$(database)/documents/leagueCodes/$(code));
+      // No reads or updates/deletes needed
+      allow read: if false;
+      allow update, delete: if false;
     }
   }
 }
