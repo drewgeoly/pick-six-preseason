@@ -1,0 +1,27 @@
+// storage.rules
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Avatars live at: avatars/{uid}/{filename}
+    match /avatars/{uid}/{allPaths=**} {
+
+      // Publicly readable avatars (switch to owner-only later if you prefer)
+      allow read: if true;
+
+      // Owners can create/update/delete their own files
+      // - On delete, request.resource is null, so guard for that.
+      // - Limit to images under 5 MB.
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && (
+                        request.resource == null || (
+                          request.resource.size < 5 * 1024 * 1024
+                          && request.resource.contentType.matches('image/.*')
+                        )
+                      );
+    }
+
+    // Everything else is denied by default (no broad allow here).
+  }
+}

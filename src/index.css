@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design System: Prime Time (dark-first) / Saturday Classic (light) */
+:root {
+  /* Typography */
+  --font-display: "Space Grotesk", Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-body: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+
+  /* Saturday Classic (light default) */
+  --bg: #FCFCFD;               /* bg/surface light */
+  --surface: #FFFFFF;          /* cards */
+  --text: #0F1720;             /* text/primary light */
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #16A34A;           /* default app accent (can be team tint) */
+  --success: #16A34A;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --neon: #00F0FF;             /* subtle neon for CTAs (Prime Time) */
+
+  /* Team tint (dynamic) */
+  --team-tint: var(--accent);
+  --team-tint-050: color-mix(in oklab, var(--team-tint) 8%, #ffffff);
+  --team-tint-100: color-mix(in oklab, var(--team-tint) 14%, #ffffff);
+
+  /* Radii / Shadows / Grid */
+  --radius-xl: 1rem;           /* rounded-2xl-ish */
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-xl: 0 12px 28px rgba(0,0,0,0.12);
+  --safe-pad: env(safe-area-inset-bottom, 0px);
+
+  color-scheme: light;
+  color: var(--text);
+  background-color: var(--bg);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Prime Time (dark) */
+    --bg: #0B0F14;            /* bg/surface dark */
+    --surface: #0F141B;       /* elevated cards */
+    --text: #F3F5F7;          /* text/primary dark */
+    --muted: #9aa3af;
+    --border: #1f2937;
+    /* keep accent/success/warning/error consistent */
+    color-scheme: dark;
+  }
+}
+
+/* Buttons / Cards */
+.btn { @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-medium transition; background: var(--accent); color: white; box-shadow: var(--shadow-md); }
+.btn:hover { filter: brightness(1.05); }
+.btn:active { transform: translateY(0.5px); }
+.btn-neon { position: relative; }
+.btn-neon::after { content: ""; position: absolute; inset: -2px; border-radius: 14px; box-shadow: 0 0 18px var(--neon); opacity: .5; pointer-events: none; }
+.btn-light { @apply inline-flex items-center px-3 py-1.5 rounded-xl; background: var(--surface); color: var(--text); box-shadow: var(--shadow-md); }
+.card { border-radius: 1rem; background: var(--surface); box-shadow: var(--shadow-md); border: 1px solid var(--border); padding: 0.75rem; }
+.card-xl { border-radius: calc(var(--radius-xl) + 4px); box-shadow: var(--shadow-xl); }
+.tinted-card { background: var(--team-tint-050); border-color: color-mix(in oklab, var(--team-tint) 25%, var(--border)); }
+a { font-weight: 500; color: color-mix(in oklab, var(--accent) 70%, #555); text-decoration: inherit; }
+a:hover { color: var(--accent); }
+
+body { margin: 0; display: block; min-width: 320px; min-height: 100vh; background: var(--bg); color: var(--text); }
+
+h1 { font-size: 3.2em; line-height: 1.1; font-family: var(--font-display); letter-spacing: -0.005em; }
+
+
+button:focus, button:focus-visible { outline: 3px solid color-mix(in oklab, var(--accent) 55%, #4b5563); outline-offset: 2px; }
+
+/* Typography overrides */
+h1, h2, .display { font-family: var(--font-display); letter-spacing: -0.005em; }
+small, .caption { font-size: 12px; }
+.body { font-size: 14px; }
+.body-lg { font-size: 16px; }
+.title { font-size: 18px; }
+.headline { font-size: 24px; }
+.display-2 { font-size: 32px; }
+.display-3 { font-size: 40px; }
+
+/* Theme helpers */
+.app-header { color: white; background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 60%, #0b0f14), color-mix(in oklab, var(--accent) 80%, #0b0f14)); box-shadow: var(--shadow-xl); }
+.brand { @apply text-xl font-bold tracking-wide uppercase; }
+.header-link { @apply text-sm text-white/80 hover:text-white; }
+.nav-tab { @apply px-3 py-1.5 rounded-md text-white/80 hover:text-white hover:bg-white/10; }
+.nav-tab-active { @apply bg-white/20 text-white font-semibold; }
+.badge { @apply inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 text-white text-xs; }
+.bg-surface { background: var(--bg); }
+
+/* Sidebar (adaptive) */
+.side-link { padding: 0.5rem 0.75rem; border-radius: 0.75rem; color: color-mix(in oklab, var(--text) 84%, #6b7280); }
+.side-link:hover { background: color-mix(in oklab, var(--accent) 8%, var(--surface)); }
+.side-link-active { background: color-mix(in oklab, var(--accent) 18%, var(--surface)); color: var(--text); font-weight: 600; }
+.badge-light { @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs; background: color-mix(in oklab, var(--text) 6%, var(--bg)); color: color-mix(in oklab, var(--text) 70%, #6b7280); }
+
+/* My Picks selection buttons */
+.pick-btn { @apply inline-flex items-center px-3 py-1.5 rounded-xl border; background: var(--surface); color: var(--text); border-color: var(--border); transition: transform 160ms cubic-bezier(.2,.8,.2,1), background-color 160ms, color 160ms; }
+.pick-selected { background: var(--team-tint-100); color: var(--text); border-color: var(--team-tint); box-shadow: 0 0 0 2px color-mix(in oklab, var(--team-tint) 40%, transparent) inset; transform: scale(1.02); }
+.pick-dim { opacity: .7; filter: saturate(.75) grayscale(.1); }
+
+/* Floating Action Button */
+.fab {
+  @apply fixed right-4 bottom-20 md:hidden inline-flex items-center justify-center w-14 h-14 rounded-full shadow-lg text-white;
+  background: var(--accent);
+}
+
+/* Provide bottom padding to avoid bottom nav overlap */
+.with-bottom-nav { @apply pb-24 md:pb-4; padding-bottom: calc(6rem + var(--safe-pad)); }
+
+/* Motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; transform: none !important; }
+}

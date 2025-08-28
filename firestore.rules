@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read their own profile; admins can enhance later
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      // User's membership list: allow owner to read their own leagues
+      match /leagues/{leagueId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        // writes managed by app flows (invites/joins); default deny
+        allow write: if false;
+      }
+    }
+
+    // Helper: is member of a league
+    function isMember(leagueId) {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/leagues/$(leagueId)/members/$(request.auth.uid));
+    }
+
+    // Helper: can edit picks for a week (unlocked and before deadline)
+    function canEdit(leagueId, weekId) {
+      let w = get(/databases/$(database)/documents/leagues/$(leagueId)/weeks/$(weekId)).data;
+      return (w.locked != true) && (!("deadline" in w) || request.time < w.deadline);
+    }
+
+    // Leagues collection
+    match /leagues/{leagueId} {
+      // Basic league doc readable by members
+      allow read: if isMember(leagueId);
+
+      // Members subcollection: members can read; owners/admins write configured elsewhere
+      match /members/{memberId} {
+        allow read: if isMember(leagueId);
+        // Writes restricted; adjust as needed
+        allow write: if false;
+      }
+
+      // Weeks and nested scores readable by members
+      match /weeks/{weekId} {
+        // Week doc is readable by members
+        allow read: if isMember(leagueId);
+
+        // Games within the week
+        match /games/{gameId} {
+          allow read: if isMember(leagueId);
+          // writes limited to admins via backend; default deny
+          allow write: if false;
+        }
+
+        // Users' picks for this week
+        match /userPicks/{uid} {
+          // Members can read for compare/consensus views
+          allow read: if isMember(leagueId);
+          // A user can write their own picks if the week is editable
+          allow write: if isMember(leagueId) && request.auth != null && request.auth.uid == uid && canEdit(leagueId, weekId);
+        }
+
+        // Computed scores for the week
+        match /scores/{uid} {
+          allow read: if isMember(leagueId);
+        }
+      }
+
+      // Aggregated leaderboard - enable read for members
+      match /leaderboard/current/users/{userId} {
+        allow read: if isMember(leagueId);
+        // Write by backend only
+        allow write: if false;
+      }
+    }
+  }
+}
