@@ -23,6 +23,9 @@ export function useWeekPicks(leagueId?: string | null, weekId?: string) {
   const [sel, setSel] = useState<Record<string, "home" | "away">>({});
   const [tiebreaker, setTiebreaker] = useState<number | "">("");
   const [saving, setSaving] = useState(false);
+  const [firstStart, setFirstStart] = useState<Date | null>(null);
+  const [tiebreakerEventKey, setTiebreakerEventKey] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
 
   useEffect(() => {
     if (!leagueId || !weekId) return;
@@ -32,6 +35,7 @@ export function useWeekPicks(leagueId?: string | null, weekId?: string) {
       const w = ws.data();
       setDeadline(w?.deadline?.toDate ? w.deadline.toDate() : (w?.deadline ? new Date(w.deadline) : null));
       setLocked(Boolean(w?.locked));
+      setTiebreakerEventKey(typeof (w as any)?.tiebreakerEventKey === 'string' && (w as any).tiebreakerEventKey ? (w as any).tiebreakerEventKey : null);
     })();
 
     const unsubGames = onSnapshot(collection(wref, "games"), (snap) => {
@@ -39,6 +43,8 @@ export function useWeekPicks(leagueId?: string | null, weekId?: string) {
         .map((d) => ({ eventKey: d.id, ...(d.data() as any) }))
         .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
       setGames(list as WeekGame[]);
+      const fs = list.length ? new Date(list[0].startTime) : null;
+      setFirstStart(fs);
     });
 
     let unsubPicks: undefined | (() => void);
@@ -61,11 +67,27 @@ export function useWeekPicks(leagueId?: string | null, weekId?: string) {
     };
   }, [leagueId, weekId, user?.uid]);
 
+  // Tick every 30s to refresh time-based flags
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 30 * 1000) as unknown as number;
+    return () => window.clearInterval(id);
+  }, []);
+
+  const linesLockAt = deadline;
+  const picksCloseAt = firstStart;
+  const now = new Date(nowTick);
+  const linesLocked = useMemo(() => {
+    return locked || (linesLockAt ? now >= linesLockAt : false);
+  }, [locked, linesLockAt, now]);
+
+  const picksClosed = useMemo(() => {
+    return locked || (picksCloseAt ? now >= picksCloseAt : false);
+  }, [locked, picksCloseAt, now]);
+
   const canEdit = useMemo(() => {
-    if (locked) return false;
-    if (!deadline) return true;
-    return new Date() < deadline;
-  }, [locked, deadline]);
+    // Picks are editable until the first game actually starts (unless league locks manually)
+    return !locked && (!picksCloseAt || now < picksCloseAt);
+  }, [locked, picksCloseAt, now]);
 
   const save = useCallback(async () => {
     if (!user || !leagueId || !weekId) return;
@@ -85,8 +107,12 @@ export function useWeekPicks(leagueId?: string | null, weekId?: string) {
   return {
     user,
     games,
-    deadline,
+    deadline, // alias retained
+    linesLockAt,
+    picksCloseAt,
     locked,
+    linesLocked,
+    picksClosed,
     canEdit,
     sel,
     setSel,
@@ -94,5 +120,6 @@ export function useWeekPicks(leagueId?: string | null, weekId?: string) {
     setTiebreaker,
     saving,
     save,
+    tiebreakerEventKey,
   } as const;
 }

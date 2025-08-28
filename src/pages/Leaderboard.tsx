@@ -11,6 +11,7 @@ export default function Leaderboard() {
   const { leagueId } = useLeague();
   const { weekId = FALLBACK_WEEK_ID } = useParams();
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
   const [weekScores, setWeekScores] = useState<Record<string, Score>>({});
   const [profiles, setProfiles] = useState<Record<string, {displayName?:string|null; email?:string|null}>>({});
   const [season, setSeason] = useState<Record<string, {correct:number; matchPoints:number; weeksPlayed?:number; total?: number}>>({});
@@ -23,6 +24,7 @@ export default function Leaderboard() {
 
   useEffect(() => {
     if (!leagueId) return;
+    setLoading(true);
     (async () => {
       // Weeks list for chip selector
       try {
@@ -77,6 +79,7 @@ export default function Leaderboard() {
         }
       }));
       setProfiles(Object.fromEntries(profEntries));
+      setLoading(false);
     })();
   }, [leagueId, weekId]);
 
@@ -122,7 +125,7 @@ export default function Leaderboard() {
                 <button
                   key={w.id}
                   onClick={() => navigate(`/leaderboard/${w.id}`)}
-                  className={`badge ${w.id===weekId ? 'btn' : 'btn-light'}`}
+                  className={`badge ${w.id===weekId ? 'btn' : 'btn-light'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500`}
                   aria-pressed={w.id===weekId}
                 >
                   {w.label || formatWeekLabel(w.id)}
@@ -131,21 +134,38 @@ export default function Leaderboard() {
             </div>
           </div>
         )}
-        <table className="w-full text-sm">
-          <thead><tr><th className="text-left py-2">Player</th><th>Correct</th><th>Match Pts</th></tr></thead>
-          <tbody>
-            {weekTable.map(r => (
-              <tr key={r.uid} className="border-t">
-                <td className="py-2">{r.name}</td>
-                <td className="text-center">{r.correct}</td>
-                <td className="text-center">{r.matchPoints ?? 0}</td>
-              </tr>
+        {loading ? (
+          <div className="space-y-2">
+            {[0,1,2,3,4].map(i => (
+              <div key={i} className="h-8 bg-slate-200/80 dark:bg-slate-700/60 rounded animate-pulse" />
             ))}
-          </tbody>
-        </table>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead><tr><th className="text-left py-2">Player</th><th>Correct</th><th>Match Pts</th></tr></thead>
+            <tbody>
+              {weekTable.map(r => (
+                <tr key={r.uid} className="border-t">
+                  <td className="py-2">{r.name}</td>
+                  <td className="text-center">{r.correct}</td>
+                  <td className="text-center">{r.matchPoints ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
-      {seasonTable.length > 0 ? (
+      {loading ? (
+        <section className="card">
+          <h2 className="text-xl font-semibold mb-2">Season Standings</h2>
+          <div className="space-y-2">
+            {[0,1,2,3,4].map(i => (
+              <div key={i} className="h-8 bg-slate-200/80 dark:bg-slate-700/60 rounded animate-pulse" />
+            ))}
+          </div>
+        </section>
+      ) : seasonTable.length > 0 ? (
         <section className="card">
           <h2 className="text-xl font-semibold mb-2">Season Standings</h2>
           <table className="w-full text-sm">

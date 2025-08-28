@@ -1,6 +1,7 @@
 // src/pages/AdminSelectGames.tsx
 import { useEffect, useMemo, useState } from "react";
-import { listEventsNCAAF, listEventsNFL, listEventsBySportKey } from "../lib/oddsApi";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { listEventsNCAAF } from "../lib/oddsApi";
 import { db } from "../lib/firebase";
 import {
   collection,
@@ -23,17 +24,9 @@ type UiEvent = {
 
 // (Optional) Could support sport scoping later if API allows.
 
-async function fetchUpcomingUiEvents(options?: { sportKey?: string; todayOnly?: boolean }): Promise<UiEvent[]> {
+async function fetchUpcomingUiEvents(options?: { todayOnly?: boolean }): Promise<UiEvent[]> {
   const from = new Date();
-  let events: Array<{ id:string; commence_time:string; home_team:string; away_team:string }> = [];
-
-  // If a full sport key is specified (e.g., americanfootball_nfl_preseason), use it directly
-  if (options?.sportKey && options.sportKey.startsWith("americanfootball_")) {
-    events = await listEventsBySportKey(options.sportKey, { from });
-  } else {
-    const useNFL = (options?.sportKey || "").toLowerCase().includes("nfl");
-    events = useNFL ? await listEventsNFL({ from }) : await listEventsNCAAF({ from });
-  }
+  let events: Array<{ id:string; commence_time:string; home_team:string; away_team:string }> = await listEventsNCAAF({ from });
 
   let list = events
     .filter(e => new Date(e.commence_time).getTime() > Date.now())
@@ -53,21 +46,31 @@ async function fetchUpcomingUiEvents(options?: { sportKey?: string; todayOnly?: 
   return list.sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
 }
 
-async function autoSeedFromOddsApi(leagueId: string, weekId: string, options?: { sportKey?: string; todayOnly?: boolean }) {
+async function autoSeedFromOddsApi(leagueId: string, weekId: string, options?: { todayOnly?: boolean }) {
   // Normalize to UiEvent so we can rely on startTime/home/away/name fields
   const events = await fetchUpcomingUiEvents(options);
   const upcoming = events.slice(0, 6);
   if (upcoming.length < 6) throw new Error("Not enough upcoming games to seed.");
 
   const earliest = new Date(Math.min(...upcoming.map(e => new Date(e.startTime).getTime())));
+  const deadline = new Date(earliest.getTime() - 60 * 60 * 1000);
 
   const wref = doc(db, "leagues", leagueId, "weeks", weekId);
   await setDoc(wref, {
     weekId,
+    // Set startTime so pages can order weeks reliably
+    startTime: earliest,
     locked: false,
-    deadline: earliest,
-    sportKey: options?.sportKey ?? null,
+    deadline,
+    tiebreakerEventKey: upcoming[0]?.key || null,
+    sportKey: "americanfootball_ncaaf",
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+
+  // Set league.currentWeekId to this week
+  await setDoc(doc(db, "leagues", leagueId), {
+    currentWeekId: weekId,
     updatedAt: serverTimestamp(),
   }, { merge: true });
 
@@ -97,29 +100,35 @@ export default function AdminSelectGames() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [weekId, setWeekId] = useState(FALLBACK_WEEK_ID);
-  const [sportKey, setSportKey] = useState<string | undefined>(undefined);
-  const [mode, setMode] = useState<"ncaaf"|"nfl"|"custom">("ncaaf");
   const [todayOnly, setTodayOnly] = useState(false);
-  const [preseason, setPreseason] = useState(false);
-  const [err, setErr] = useState("");
+  const [tiebreakerKey, setTiebreakerKey] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [members, setMembers] = useState<Array<{ uid: string; email?: string; name?: string }>>([]);
+  const [pickStatus, setPickStatus] = useState<{ complete: string[]; missing: string[] }>({ complete: [], missing: [] });
+  const [reminding, setReminding] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const selectedEvents = useMemo(
     () => events.filter((e) => selected[e.key]),
     [events, selected]
   );
   const maxReached = selectedEvents.length >= 6;
+  useEffect(() => {
+    // default tiebreaker to first selected if not set
+    if (!tiebreakerKey && selectedEvents.length > 0) {
+      setTiebreakerKey(selectedEvents[0].key);
+    } else if (tiebreakerKey && !selected[tiebreakerKey]) {
+      // if deselected, move to first available
+      setTiebreakerKey(selectedEvents[0]?.key || null);
+    }
+  }, [selectedEvents.map(e=>e.key).join(','), tiebreakerKey, selected]);
 
   async function refresh() {
     setLoading(true);
     setErr("");
     try {
-      const effectiveSportKey = mode === "custom"
-        ? sportKey
-        : mode === "nfl"
-          ? (preseason ? "americanfootball_nfl_preseason" : "americanfootball_nfl")
-          : "americanfootball_ncaaf";
-      const list = await fetchUpcomingUiEvents({ sportKey: effectiveSportKey, todayOnly });
+      const list = await fetchUpcomingUiEvents({ todayOnly });
       setEvents(list);
     } catch (e: any) {
       setErr(e.message || "Failed to load events");
@@ -129,31 +138,96 @@ export default function AdminSelectGames() {
     }
   }
 
-  // Reset preseason when switching away from NFL
-  useEffect(() => {
-    if (mode !== "nfl") setPreseason(false);
-  }, [mode]);
-
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sportKey, todayOnly]);
+  }, [todayOnly]);
 
-  // Re-run when switching mode or toggling preseason so the list updates immediately
+  // Load existing week selections and tiebreaker
   useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, preseason]);
+    if (!leagueId || !weekId) return;
+    let isMounted = true;
+    (async () => {
+      try {
+        const wref = doc(db, "leagues", leagueId, "weeks", weekId);
+        const [wSnap, gSnap] = await Promise.all([
+          (await import("firebase/firestore")).getDoc(wref),
+          (await import("firebase/firestore")).getDocs(collection(wref, "games")),
+        ]);
+        if (!isMounted) return;
+        const w = wSnap.data() as any | undefined;
+        if (typeof w?.tiebreakerEventKey === 'string') {
+          setTiebreakerKey(w.tiebreakerEventKey);
+        }
+        const gameIds = new Set(gSnap.docs.map(d => d.id));
+        setSelected(() => {
+          const map: Record<string, boolean> = {};
+          for (const id of gameIds) map[id] = true;
+          return map;
+        });
+      } catch {
+        // ignore
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [leagueId, weekId]);
+
+  // Reconcile selections when the events list changes (only keep those that still exist)
+  useEffect(() => {
+    if (!events.length) return;
+    setSelected((sel) => {
+      const allowed = new Set(events.map(e => e.key));
+      const next: Record<string, boolean> = {};
+      Object.entries(sel).forEach(([k, v]) => { if (v && allowed.has(k)) next[k] = true; });
+      return next;
+    });
+  }, [events.map(e=>e.key).join(',')]);
+
+  // Load members and pick status for current week
+  useEffect(() => {
+    (async () => {
+      if (!leagueId || !weekId) return;
+      try {
+        const memSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+        const mem = memSnap.docs.map(d => ({ uid: d.id, ...(d.data() as any) })).map(m => ({ uid: m.uid, email: m.email, name: m.displayName || m.name }));
+        setMembers(mem);
+        const picksSnap = await getDocs(collection(db, "leagues", leagueId, "weeks", weekId, "userPicks"));
+        const byUid: Record<string, any> = {};
+        picksSnap.docs.forEach(d => { byUid[d.id] = d.data(); });
+        const complete: string[] = [];
+        const missing: string[] = [];
+        for (const m of mem) {
+          const p = byUid[m.uid];
+          const selections = p?.selections ? Object.keys(p.selections) : [];
+          const tb = p?.tiebreaker;
+          const done = selections.length === 6 && typeof tb === 'number';
+          (done ? complete : missing).push(m.uid);
+        }
+        setPickStatus({ complete, missing });
+      } catch (e) {
+        // noop
+      }
+    })();
+  }, [leagueId, weekId, saving, msg]);
+
+  async function onSendReminders() {
+    if (!leagueId || !weekId) return;
+    setReminding(true); setErr(""); setMsg("");
+    try {
+      const fn = httpsCallable(getFunctions(), "sendPickReminders");
+      const res: any = await fn({ leagueId, weekId });
+      setMsg(res?.data?.message || `Reminders queued (sent/logged: ${res?.data?.sent ?? res?.data?.logged ?? 0}).`);
+    } catch (e: any) {
+      setErr(e?.message || "Failed to send reminders");
+    } finally {
+      setReminding(false);
+    }
+  }
 
   async function handleAutoSeed() {
     if (!leagueId) { setErr("Select or create a league first."); return; }
     try {
-      const effectiveSportKey = mode === "custom"
-        ? sportKey
-        : mode === "nfl"
-          ? (preseason ? "americanfootball_nfl_preseason" : "americanfootball_nfl")
-          : "americanfootball_ncaaf";
-      await autoSeedFromOddsApi(leagueId, weekId, { sportKey: effectiveSportKey, todayOnly });
+      await autoSeedFromOddsApi(leagueId, weekId, { todayOnly });
       setMsg(`Seeded 6 games for ${weekId}`);
     } catch (e: any) {
       setErr(e.message || "Failed to seed games");
@@ -170,20 +244,18 @@ export default function AdminSelectGames() {
     const deadline = new Date(earliest.getTime() - 60 * 60 * 1000); // minus 1 hour
 
     const batch = writeBatch(db);
-    const effectiveSportKey = mode === "custom"
-      ? sportKey
-      : mode === "nfl"
-        ? (preseason ? "americanfootball_nfl_preseason" : "americanfootball_nfl")
-        : "americanfootball_ncaaf";
     const weekRef = doc(db, "leagues", leagueId, "weeks", weekId);
     batch.set(
       weekRef,
       {
         weekId,
         title: weekId,
+        // Include startTime for ordering in History/Leaderboard
+        startTime: earliest,
         deadline,
         locked: false,
-        sportKey: effectiveSportKey ?? null,
+        tiebreakerEventKey: tiebreakerKey || selectedEvents[0].key,
+        sportKey: "americanfootball_ncaaf",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
@@ -206,6 +278,8 @@ export default function AdminSelectGames() {
       });
     }
     await batch.commit();
+    // Set league.currentWeekId to this saved week
+    await setDoc(doc(db, "leagues", leagueId), { currentWeekId: weekId, updatedAt: serverTimestamp() }, { merge: true });
     setMsg("Week saved!");
   }
 
@@ -213,31 +287,7 @@ export default function AdminSelectGames() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <h1 className="text-2xl font-semibold mr-auto">Select this week’s 6 games</h1>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-slate-600">League:</span>
-          <label className="inline-flex items-center gap-1">
-            <input type="radio" name="mode" checked={mode==="ncaaf"} onChange={()=>setMode("ncaaf")} /> NCAAF
-          </label>
-          <label className="inline-flex items-center gap-1">
-            <input type="radio" name="mode" checked={mode==="nfl"} onChange={()=>setMode("nfl")} /> NFL
-          </label>
-          {mode === "nfl" && (
-            <label className="inline-flex items-center gap-1 ml-1">
-              <input type="checkbox" checked={preseason} onChange={(e)=>setPreseason(e.target.checked)} /> Preseason
-            </label>
-          )}
-          <label className="inline-flex items-center gap-1">
-            <input type="radio" name="mode" checked={mode==="custom"} onChange={()=>setMode("custom")} /> Custom
-          </label>
-          {mode === "custom" && (
-            <input
-              className="border rounded px-2 py-1 ml-2"
-              placeholder="custom sport key"
-              value={sportKey || ""}
-              onChange={(e)=>setSportKey(e.target.value || undefined)}
-            />
-          )}
-        </div>
+        <div className="flex items-center gap-3 text-sm"><span className="text-slate-600">League:</span> <span className="font-medium">NCAA Football</span></div>
         <label className="text-sm inline-flex items-center gap-2 ml-2">
           <input type="checkbox" checked={todayOnly} onChange={(e)=>setTodayOnly(e.target.checked)} /> Today only
         </label>
@@ -287,6 +337,18 @@ export default function AdminSelectGames() {
                   <div className="font-medium">{ev.name}</div>
                   <div className="text-sm text-gray-600">
                     {new Date(ev.startTime).toLocaleString()}
+                  </div>
+                  <div className="mt-2 text-xs flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="tiebreaker"
+                      disabled={!isChecked}
+                      checked={tiebreakerKey === ev.key}
+                      onChange={() => setTiebreakerKey(ev.key)}
+                    />
+                    <span className={`${tiebreakerKey === ev.key ? "text-emerald-700 font-medium" : "text-slate-600"}`}>
+                      Tiebreaker game
+                    </span>
                   </div>
                 </div>
               </label>

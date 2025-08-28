@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 
 initializeApp();
@@ -260,5 +261,68 @@ export const onGameWrite = onDocumentWritten('leagues/{leagueId}/weeks/{weekId}/
     await recomputeSeasonAggregates(leagueId);
   } catch (e) {
     logger.error('onGameWrite recompute error', e);
+  }
+});
+
+// Callable: Send pick reminders to members who haven't completed picks for the given week
+export const sendPickReminders = onCall<{ leagueId: string; weekId: string }>(async (request) => {
+  const { leagueId, weekId } = request.data || {} as any;
+  if (!leagueId || !weekId) {
+    throw new Error('leagueId and weekId are required');
+  }
+
+  const leagueRef = db.doc(`leagues/${leagueId}`);
+  const league = (await leagueRef.get()).data() as any | undefined;
+  if (!league) throw new Error('League not found');
+
+  const membersSnap = await db.collection(`leagues/${leagueId}/members`).get();
+  const memberList = membersSnap.docs.map(d => ({ uid: d.id, ...(d.data() as any) }));
+
+  const picksColPath = `leagues/${leagueId}/weeks/${weekId}/userPicks`;
+  const picksSnap = await db.collection(picksColPath).get();
+  const picksByUid: Record<string, any> = {};
+  for (const p of picksSnap.docs) picksByUid[p.id] = p.data();
+
+  const missing: Array<{ uid: string; email?: string; name?: string }> = [];
+  for (const m of memberList) {
+    const p = picksByUid[m.uid];
+    const selections = p?.selections ? Object.keys(p.selections) : [];
+    const tb = p?.tiebreaker;
+    const complete = selections.length === 6 && typeof tb === 'number';
+    if (!complete) missing.push({ uid: m.uid, email: m.email, name: m.displayName || m.name });
+  }
+
+  if (!missing.length) return { sent: 0, message: 'All members have completed picks.' };
+
+  const sendgridKey = process.env.SENDGRID_API_KEY;
+  if (!sendgridKey) {
+    logger.warn('SENDGRID_API_KEY not set. Logging recipients instead of emailing. Missing:', missing);
+    return { sent: 0, logged: missing.length };
+  }
+
+  // Send via SendGrid
+  const emails = missing.filter(m => m.email).map(m => ({ to: m.email as string, name: m.name || '' }));
+  if (!emails.length) return { sent: 0, message: 'No emails on file for missing members.' };
+
+  try {
+    const payload = {
+      personalizations: emails.map(e => ({ to: [{ email: e.to, name: e.name }] })),
+      from: { email: 'no-reply@picksix.app', name: 'Pick-Six' },
+      subject: 'Reminder: Make your Pick-Six picks',
+      content: [{ type: 'text/plain', value: `Your league admin asked us to remind you to make your Pick-Six picks for week ${weekId}.` }],
+    };
+    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${sendgridKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      logger.warn('SendGrid non-200', res.status, await res.text());
+      return { sent: 0, message: 'SendGrid error' };
+    }
+    return { sent: emails.length };
+  } catch (e) {
+    logger.error('SendGrid send error', e);
+    return { sent: 0, message: 'Send error' };
   }
 });

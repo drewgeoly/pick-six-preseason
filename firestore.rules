@@ -20,10 +20,18 @@ service cloud.firestore {
              exists(/databases/$(database)/documents/leagues/$(leagueId)/members/$(request.auth.uid));
     }
 
-    // Helper: can edit picks for a week (unlocked and before deadline)
+    // Helper: is admin/owner of a league
+    function isAdmin(leagueId) {
+      return request.auth != null &&
+             get(/databases/$(database)/documents/leagues/$(leagueId)/members/$(request.auth.uid)).data.role in ["owner", "admin"];
+    }
+
+    // Helper: can edit picks for a week (unlocked and before first kickoff)
+    // Lines lock uses w.deadline (front-end enforces odds lock),
+    // but picks are allowed until w.startTime (earliest game start)
     function canEdit(leagueId, weekId) {
       let w = get(/databases/$(database)/documents/leagues/$(leagueId)/weeks/$(weekId)).data;
-      return (w.locked != true) && (!("deadline" in w) || request.time < w.deadline);
+      return (w.locked != true) && ("startTime" in w) && request.time < w.startTime;
     }
 
     // Leagues collection
@@ -42,12 +50,14 @@ service cloud.firestore {
       match /weeks/{weekId} {
         // Week doc is readable by members
         allow read: if isMember(leagueId);
+        // Allow admins to create/update week docs (select games, lock, deadlines)
+        allow write: if isAdmin(leagueId);
 
         // Games within the week
         match /games/{gameId} {
           allow read: if isMember(leagueId);
-          // writes limited to admins via backend; default deny
-          allow write: if false;
+          // Allow admins to create/update games (selection) and set results
+          allow write: if isAdmin(leagueId);
         }
 
         // Users' picks for this week

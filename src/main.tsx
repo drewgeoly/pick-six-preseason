@@ -1,5 +1,5 @@
 // src/main.tsx
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
@@ -10,26 +10,27 @@ import ToastHost from "./components/ToastHost";
 import LeagueProvider from "./league/LeagueProvider"; 
 import { RequireAuth, RedirectIfAuth, RequireLeagueMember } from "./auth/RouteGuards";
 
-// Public pages
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import ResetPassword from "./pages/ResetPassword";
-import Profile from "./pages/Profile";
-import LeaguesCreate from "./pages/LeaguesCreate";
-import LeaguesJoin from "./pages/LeaguesJoin";
+// Public pages (code-split)
+const Login = lazy(() => import("./pages/Login"));
+const Signup = lazy(() => import("./pages/Signup"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Profile = lazy(() => import("./pages/Profile"));
+const LeaguesCreate = lazy(() => import("./pages/LeaguesCreate"));
+const LeaguesJoin = lazy(() => import("./pages/LeaguesJoin"));
+const Landing = lazy(() => import("./pages/Landing"));
 
-// League-scoped pages
-import Leaderboard from "./pages/Leaderboard";
-import ComparePicks from "./pages/ComparePicks";
-import Consensus from "./pages/Consensus";
-import AdminSelectGames from "./pages/AdminSelectGames";
-import AdminSetResults from "./pages/AdminSetResults";
-import AdminScoring from "./pages/AdminScoring";
-import MakePicks from "./pages/MakePicks"; // or your picks page
-import Members from "./pages/Members";
-import Home from "./pages/Home";
-import History from "./pages/History";
-import Onboarding from "./pages/Onboarding";
+// League-scoped pages (code-split)
+const Leaderboard = lazy(() => import("./pages/Leaderboard"));
+const ComparePicks = lazy(() => import("./pages/ComparePicks"));
+const Consensus = lazy(() => import("./pages/Consensus"));
+const AdminSelectGames = lazy(() => import("./pages/AdminSelectGames"));
+const AdminSetResults = lazy(() => import("./pages/AdminSetResults"));
+const AdminScoring = lazy(() => import("./pages/AdminScoring"));
+const MakePicks = lazy(() => import("./pages/MakePicks"));
+const Members = lazy(() => import("./pages/Members"));
+const Home = lazy(() => import("./pages/Home"));
+const History = lazy(() => import("./pages/History"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
 
 const router = createBrowserRouter([
   // Redirect "/" to something real
@@ -48,6 +49,7 @@ const router = createBrowserRouter([
 
       // Require auth for these pages
       { element: <RequireAuth /> , children: [
+        { path: "/landing", element: <Landing /> },
         { path: "/profile", element: <Profile /> },
         { path: "/leagues/create", element: <LeaguesCreate /> },
         { path: "/leagues/join", element: <LeaguesJoin /> },
@@ -90,7 +92,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
       <ToastHost>
-        <RouterProvider router={router} />
+        <Suspense fallback={
+          <div className="p-6 space-y-3">
+            <div className="h-6 w-40 bg-slate-200/80 dark:bg-slate-700/60 rounded animate-pulse" />
+            <div className="h-10 bg-slate-200/80 dark:bg-slate-700/60 rounded animate-pulse" />
+            <div className="h-10 bg-slate-200/80 dark:bg-slate-700/60 rounded animate-pulse" />
+          </div>
+        }>
+          <RouterProvider router={router} />
+        </Suspense>
       </ToastHost>
     </AuthProvider>
   </React.StrictMode>

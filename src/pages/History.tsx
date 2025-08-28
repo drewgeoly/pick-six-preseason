@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLeague } from "../league/LeagueProvider";
 import { useAuth } from "../auth/AuthProvider";
-import { collection, doc, getDocs, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, doc, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { formatWeekLabel } from "../lib/weeks";
 import { isPickCorrect, type GameDoc } from "../lib/scoring";
@@ -14,17 +14,28 @@ export default function History() {
   const { leagueId } = useLeague();
   const { user } = useAuth();
   const [weeks, setWeeks] = useState<WeekDoc[]>([]);
+  const [loading, setLoading] = useState(true);
   const [gamesByWeek, setGamesByWeek] = useState<Record<string, Game[]>>({});
   const [picksByWeek, setPicksByWeek] = useState<Record<string, PicksDoc>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     if (!leagueId) return;
+    setLoading(true);
     (async () => {
-      const q = query(collection(db, "leagues", leagueId, "weeks"), orderBy("startTime", "desc"));
-      const snap = await getDocs(q);
-      const arr: WeekDoc[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-      setWeeks(arr);
+      try {
+        const snap = await getDocs(collection(db, "leagues", leagueId, "weeks"));
+        const arr: WeekDoc[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+        // Sort client-side by startTime desc, fallback to deadline
+        arr.sort((a, b) => {
+          const at = a.startTime ? +new Date(a.startTime) : (a as any).deadline ? +new Date((a as any).deadline) : 0;
+          const bt = b.startTime ? +new Date(b.startTime) : (b as any).deadline ? +new Date((b as any).deadline) : 0;
+          return bt - at;
+        });
+        setWeeks(arr);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [leagueId]);
 
@@ -79,9 +90,21 @@ export default function History() {
     <div className="space-y-4">
       <h2 className="text-xl font-semibold">History</h2>
       <div className="space-y-3">
+        {loading && (
+          <div className="space-y-3">
+            {[0,1,2,3].map(i => (
+              <div key={i} className="card animate-pulse">
+                <div className="h-6 w-40 bg-slate-200/80 dark:bg-slate-700/60 rounded" />
+                <div className="mt-2 h-4 w-64 bg-slate-200/80 dark:bg-slate-700/60 rounded" />
+              </div>
+            ))}
+          </div>
+        )}
         {weeks.map((w) => {
           const { correct, total } = summaries[w.id] || { correct:0, total:0 };
-          const decided = (gamesByWeek[w.id] || []).filter(g => g.decided).length;
+          const games = gamesByWeek[w.id] || [];
+          const decided = games.filter(g => g.decided).length;
+          const pct = total ? Math.round((correct / total) * 100) : 0;
           return (
             <div key={w.id} className="card">
               <div className="flex items-center gap-3">
@@ -89,13 +112,34 @@ export default function History() {
                   <div className="font-medium">{w.label || formatWeekLabel(w.id as any)}</div>
                   <div className="text-xs opacity-70">{correct}/{total} decided • {decided} games final</div>
                 </div>
-                <button className="btn-light" onClick={()=>setExpanded(expanded===w.id?null:w.id)}>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="badge btn-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                    aria-label={`Accuracy ${pct}%`}
+                    role="status"
+                  >
+                    <span className="font-medium">{pct}%</span>
+                    <span className="sr-only"> accuracy</span>
+                  </div>
+                  <div className="w-16 h-2 rounded bg-slate-200/70 dark:bg-slate-700/60 overflow-hidden" aria-hidden>
+                    <div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+                <button
+                  className="btn-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                  onClick={()=>setExpanded(expanded===w.id?null:w.id)}
+                >
                   {expanded === w.id ? "Hide" : "View"}
                 </button>
               </div>
               {expanded === w.id && (
                 <div className="mt-3 space-y-2">
-                  {(gamesByWeek[w.id] || []).map((g) => {
+                  {games.length === 0 && (
+                    <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                      Waiting for the admin to select the games for this week.
+                    </div>
+                  )}
+                  {games.map((g) => {
                     const side = picksByWeek[w.id]?.selections?.[g.eventKey] as ("home"|"away"|undefined);
                     const v = isPickCorrect(side, g as any);
                     const label = side ? (side === "home" ? g.home : g.away) : "—";
@@ -105,7 +149,7 @@ export default function History() {
                           <div className="text-sm font-medium">{g.away} @ {g.home}</div>
                           <div className="text-xs opacity-70">{new Date(g.startTime).toLocaleString()}</div>
                         </div>
-                        <div className={`text-sm ${v==='correct'?'text-emerald-700':v==='incorrect'?'text-red-600':'opacity-70'}`}>{label}</div>
+                        <div className={`text-sm ${v==='correct'?"text-emerald-700":v==='incorrect'?"text-red-600":"opacity-70"}`}>{label}</div>
                       </div>
                     );
                   })}
