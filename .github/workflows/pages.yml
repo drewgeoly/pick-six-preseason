@@ -32,6 +32,7 @@ jobs:
           echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env.production
           echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env.production
           echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env.production
+          echo "VITE_ODDS_API_KEY=${{ secrets.VITE_ODDS_API_KEY }}" >> .env.production
       - name: Validate required secrets present
         run: |
           test -n "${{ secrets.VITE_FIREBASE_API_KEY }}" || (echo "Missing VITE_FIREBASE_API_KEY secret" && exit 1)
@@ -39,6 +40,13 @@ jobs:
           test -n "${{ secrets.VITE_FIREBASE_PROJECT_ID }}" || (echo "Missing VITE_FIREBASE_PROJECT_ID secret" && exit 1)
           test -n "${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" || (echo "Missing VITE_FIREBASE_STORAGE_BUCKET secret" && exit 1)
           test -n "${{ secrets.VITE_FIREBASE_APP_ID }}" || (echo "Missing VITE_FIREBASE_APP_ID secret" && exit 1)
+          test -n "${{ secrets.VITE_ODDS_API_KEY }}" || (echo "Missing VITE_ODDS_API_KEY secret" && exit 1)
+      - name: Sanity check env values (lengths only)
+        run: |
+          for k in VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_STORAGE_BUCKET VITE_FIREBASE_APP_ID VITE_ODDS_API_KEY; do
+            val=$(grep ^$k= .env.production | cut -d= -f2-)
+            printf "%s length: %s\n" "$k" "${#val}"
+          done
       - name: Install deps
         run: npm ci
       - name: Build
