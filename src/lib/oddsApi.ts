@@ -108,11 +108,25 @@ async function req<T>(path: string, params: Record<string, string | number | boo
   const url = `${BASE}${path}?${usp.toString()}`;
   const res = await fetch(url);
   if (!res.ok) {
-    // Soft-retry: if 422 due to date formatting or range, try again without date filter
-    if (res.status === 422 && ("commenceTimeFrom" in params || "commenceTimeTo" in params)) {
-      const url2 = `${BASE}${path}?${new URLSearchParams({ apiKey: KEY }).toString()}`;
-      const res2 = await fetch(url2);
-      if (res2.ok) return res2.json() as Promise<T>;
+    // Soft-retry logic for 422 with eventIds/daysFrom combinations
+    if (res.status === 422) {
+      const hasEventIds = 'eventIds' in params && Array.isArray((params as any).eventIds) && (params as any).eventIds.length > 0;
+      const hasDaysFrom = 'daysFrom' in params;
+      // If both provided, retry without daysFrom
+      if (hasEventIds && hasDaysFrom) {
+        const usp2 = new URLSearchParams();
+        usp2.append('apiKey', KEY);
+        usp2.append('dateFormat', 'iso');
+        for (const id of (params as any).eventIds as string[]) usp2.append('eventIds', id);
+        const res2 = await fetch(`${BASE}${path}?${usp2.toString()}`);
+        if (res2.ok) return res2.json() as Promise<T>;
+      }
+      // If date range keys present, try minimal query
+      if ("commenceTimeFrom" in params || "commenceTimeTo" in params) {
+        const url2 = `${BASE}${path}?${new URLSearchParams({ apiKey: KEY }).toString()}`;
+        const res2 = await fetch(url2);
+        if (res2.ok) return res2.json() as Promise<T>;
+      }
     }
     throw new Error(`${res.status} ${res.statusText}`);
   }
