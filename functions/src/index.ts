@@ -28,6 +28,7 @@ async function recomputeWeekScores(leagueId: string, weekId: string): Promise<vo
   const games = gamesSnap.docs.map((d: QueryDocumentSnapshot) => ({ id: d.id, ...(d.data() as any) }));
 
   const picksSnap = await db.collection(weekRef.path + '/userPicks').get();
+  const membersSnap = await db.collection(`leagues/${leagueId}/members`).get();
 
   const winnerByEvent: Record<string, 'home'|'away'|'tie'|undefined> = {};
   for (const g of games as Array<any>) {
@@ -40,20 +41,29 @@ async function recomputeWeekScores(leagueId: string, weekId: string): Promise<vo
     }
   }
 
+  // Count decided, non-tie games once; use as "total" for all users
+  const decidedNonTieCount = (games as Array<any>).filter((g: any) => g.decided === true && g.winner && g.winner !== 'tie').length;
+
   const batch = db.bulkWriter();
   for (const docSnap of picksSnap.docs as Array<QueryDocumentSnapshot>) {
     const uid: string = docSnap.id;
     const data: { selections?: Record<string, 'home'|'away'> } = docSnap.data() as any;
-    let correct = 0; let total = 0;
+    let correct = 0; let total = decidedNonTieCount;
     for (const [ek, side] of Object.entries(data.selections || {})) {
       const w = winnerByEvent[ek];
-      if (w) {
-        if (w !== 'tie') total += 1; // exclude ties from total by default
-        if (w === side) correct += 1;
-      }
+      if (w && w !== 'tie' && w === side) correct += 1;
     }
     const scoreRef = db.doc(`${weekRef.path}/scores/${uid}`);
     batch.set(scoreRef, { correct, total, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+  // Ensure zero scores for members who did not pick
+  const pickedUids = new Set(picksSnap.docs.map(d => d.id));
+  for (const m of membersSnap.docs) {
+    const uid = m.id;
+    if (!pickedUids.has(uid)) {
+      const scoreRef = db.doc(`${weekRef.path}/scores/${uid}`);
+      batch.set(scoreRef, { correct: 0, total: decidedNonTieCount, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
   }
   await batch.close();
 
@@ -61,6 +71,20 @@ async function recomputeWeekScores(leagueId: string, weekId: string): Promise<vo
   const allDecided = (games as Array<any>).length > 0 && (games as Array<any>).every((g: any) => g.decided === true);
   if (allDecided) {
     await weekRef.set({ status: 'final', finalizedAt: FieldValue.serverTimestamp() }, { merge: true });
+
+    // Auto-advance currentWeekId for this league if possible
+    try {
+      const weeksSnap = await db.collection(`leagues/${leagueId}/weeks`).get();
+      const weekIds = weeksSnap.docs.map(d => d.id).sort();
+      const idx = weekIds.indexOf(weekId);
+      const nextId = idx >= 0 && idx + 1 < weekIds.length ? weekIds[idx + 1] : undefined;
+      if (nextId) {
+        const leagueRef = db.doc(`leagues/${leagueId}`);
+        await leagueRef.set({ currentWeekId: nextId, lastAdvancedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
+    } catch (e) {
+      logger.warn('auto-advance failed', e);
+    }
   }
 }
 
@@ -129,7 +153,7 @@ function determineWinnerFromScores(s: OddsScore): 'home'|'away'|'tie'|undefined 
   return 'tie';
 }
 
-async function fetchNcaafScores(daysFrom: number = 3): Promise<OddsScore[]> {
+async function fetchNcaafScores(daysFrom: number = 3, eventIds?: string[]): Promise<OddsScore[]> {
   const apiKey = process.env.ODDS_API_KEY;
   if (!apiKey) {
     logger.warn('ODDS_API_KEY not set; skipping results ingestion');
@@ -139,6 +163,9 @@ async function fetchNcaafScores(daysFrom: number = 3): Promise<OddsScore[]> {
   url.searchParams.set('apiKey', apiKey);
   url.searchParams.set('daysFrom', String(daysFrom));
   url.searchParams.set('dateFormat', 'iso');
+  if (eventIds && eventIds.length) {
+    for (const id of eventIds) url.searchParams.append('eventIds', id);
+  }
   try {
     const res = await fetch(url.toString());
     if (!res.ok) {
@@ -158,7 +185,13 @@ async function updateFinishedGamesFromOddsApi(leagueId: string, weekId: string):
   const gamesSnap = await db.collection(weekRef.path + '/games').get();
   const games = gamesSnap.docs.map(d => ({ id: d.id, ref: d.ref, ...(d.data() as any) }));
 
-  const oddsScores = await fetchNcaafScores(6); // look back almost a week
+  // Fetch by eventIds to ensure we can get results even if the game is older than daysFrom window
+  const eventIds = (games as Array<any>).map(g => g.id);
+  let oddsScores = await fetchNcaafScores(6, eventIds);
+  if (!oddsScores.length) {
+    // fallback: look back two weeks
+    oddsScores = await fetchNcaafScores(14, eventIds);
+  }
   if (!oddsScores.length) return;
 
   // Build quick lookup by normalized names and kickoff date
@@ -172,12 +205,21 @@ async function updateFinishedGamesFromOddsApi(leagueId: string, weekId: string):
     const k = keyize(s.away_team, s.home_team, s.commence_time);
     scoreMap.set(k, s);
   }
+  // Also map by event id if present so we can match by our eventKey directly
+  const scoreById = new Map<string, OddsScore>();
+  for (const s of oddsScores) {
+    if (s.id) scoreById.set(s.id, s);
+  }
 
   const writer = db.bulkWriter();
   for (const g of games as Array<any>) {
     if (g.decided === true) continue;
-    const k = keyize(g.away, g.home, g.startTime);
-    const s = scoreMap.get(k);
+    // Prefer matching by the Odds API event id
+    let s: OddsScore | undefined = scoreById.get(g.eventKey);
+    if (!s) {
+      const k = keyize(g.away, g.home, g.startTime);
+      s = scoreMap.get(k);
+    }
     if (!s || !s.completed) continue;
     const winner = determineWinnerFromScores(s);
     if (!winner) continue;
@@ -324,5 +366,22 @@ export const sendPickReminders = onCall<{ leagueId: string; weekId: string }>(as
   } catch (e) {
     logger.error('SendGrid send error', e);
     return { sent: 0, message: 'Send error' };
+  }
+});
+
+// Callable: Force sync results for a league/week, then recompute scores and aggregates
+export const adminSyncWeekResults = onCall<{ leagueId: string; weekId: string }>(async (request) => {
+  const { leagueId, weekId } = (request.data || {}) as { leagueId?: string; weekId?: string };
+  if (!leagueId || !weekId) {
+    throw new Error('leagueId and weekId are required');
+  }
+  try {
+    await updateFinishedGamesFromOddsApi(leagueId, weekId);
+    await recomputeWeekScores(leagueId, weekId);
+    await recomputeSeasonAggregates(leagueId);
+    return { ok: true };
+  } catch (e: any) {
+    logger.error('adminSyncWeekResults error', e);
+    return { ok: false, error: String(e?.message || e) };
   }
 });

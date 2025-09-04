@@ -75,23 +75,37 @@ export type ScoreEvent = {
 };
 
 export async function listScoresNCAAF(opts?: { daysFrom?: number; eventIds?: string[] }): Promise<ScoreEvent[]> {
-  const params: Record<string, string> = { dateFormat: "iso" } as const;
+  const params: Record<string, string | string[]> = { dateFormat: "iso" } as const;
   if (opts?.daysFrom != null) (params as any).daysFrom = String(opts.daysFrom);
-  if (opts?.eventIds?.length) (params as any).eventIds = opts.eventIds.join(",");
+  if (opts?.eventIds?.length) {
+    const cleaned = opts.eventIds.map(id => String(id).trim()).map(id => id.includes(":") ? id.split(":")[0] : id).filter(Boolean);
+    (params as any).eventIds = cleaned; // append each id as its own param
+  }
   return req<ScoreEvent[]>(`/sports/${NCAAF_KEY}/scores`, params);
 }
 
 export async function listScoresBySportKey(sportKey: string, opts?: { daysFrom?: number; eventIds?: string[] }): Promise<ScoreEvent[]> {
-  const params: Record<string, string> = { dateFormat: "iso" } as const;
+  const params: Record<string, string | string[]> = { dateFormat: "iso" } as const;
   if (opts?.daysFrom != null) (params as any).daysFrom = String(opts.daysFrom);
-  if (opts?.eventIds?.length) (params as any).eventIds = opts.eventIds.join(",");
+  if (opts?.eventIds?.length) {
+    const cleaned = opts.eventIds.map(id => String(id).trim()).map(id => id.includes(":") ? id.split(":")[0] : id).filter(Boolean);
+    (params as any).eventIds = cleaned; // append each id as its own param
+  }
   return req<ScoreEvent[]>(`/sports/${sportKey}/scores`, params);
 }
 
-async function req<T>(path: string, params: Record<string, string | number | boolean> = {}): Promise<T> {
+async function req<T>(path: string, params: Record<string, string | number | boolean | string[]> = {}): Promise<T> {
   if (!KEY) throw new Error("Missing VITE_ODDS_API_KEY");
-  const qs = new URLSearchParams({ apiKey: KEY, ...Object.fromEntries(Object.entries(params).map(([k,v])=>[k,String(v)])) }).toString();
-  const url = `${BASE}${path}?${qs}`;
+  const usp = new URLSearchParams();
+  usp.append("apiKey", KEY);
+  for (const [k, v] of Object.entries(params)) {
+    if (Array.isArray(v)) {
+      for (const item of v) usp.append(k, item);
+    } else {
+      usp.append(k, String(v));
+    }
+  }
+  const url = `${BASE}${path}?${usp.toString()}`;
   const res = await fetch(url);
   if (!res.ok) {
     // Soft-retry: if 422 due to date formatting or range, try again without date filter

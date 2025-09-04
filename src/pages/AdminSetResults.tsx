@@ -6,6 +6,7 @@ import { useParams } from "react-router-dom";
 import { computeUserWeekScore, computeWinner, type GameDoc } from "../lib/scoring";
 import { listScoresBySportKey, NCAAF_KEY } from "../lib/oddsApi";
 import { FALLBACK_WEEK_ID, formatWeekLabel, rememberLastWeekId } from "../lib/weeks";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 type UiGame = GameDoc & {
   name: string;
@@ -67,6 +68,27 @@ export default function AdminSetResults() {
       updatedAt: serverTimestamp(),
     }, { merge: true });
     setGames((gs) => gs.map((g) => g.eventKey === eventKey ? { ...g, finalScoreHome: home, finalScoreAway: away, winner, decided } : g));
+  }
+
+  async function forceServerSync() {
+    if (!leagueId) return;
+    setSaving(true); setMsg("");
+    try {
+      const fn = httpsCallable(getFunctions(undefined, 'us-central1'), "adminSyncWeekResults");
+      const res: any = await fn({ leagueId, weekId });
+      if (res?.data?.ok) {
+        setMsg("Server sync started. Refreshing data...");
+        // Reload current games and recompute locally to reflect changes ASAP
+        await syncFromApi();
+      } else {
+        setMsg(res?.data?.error || "Server sync failed");
+      }
+    } catch (e: any) {
+      console.error(e);
+      setMsg(e?.message || "Failed to call server sync");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function syncFromApi() {
@@ -199,9 +221,9 @@ export default function AdminSetResults() {
     if (!wref || !leagueId) return;
     setSaving(true); setMsg("");
     try {
-      // Load settings
-      const sref = doc(db, "leagues", leagueId, "settings");
-      const ss = await getDoc(sref);
+      // Load settings from league root doc
+      const leagueRef = doc(db, "leagues", leagueId);
+      const ss = await getDoc(leagueRef);
       const settings = (ss.data() as any) || {};
 
       // Load games
@@ -273,6 +295,7 @@ export default function AdminSetResults() {
         <h1 className="text-2xl font-semibold mr-auto">Set Results — {formatWeekLabel(weekId)}</h1>
         <button className="btn" disabled={saving} onClick={simulateFinals}>Simulate Finals</button>
         <button className="btn" disabled={saving} onClick={syncFromApi}>Sync Scores from API</button>
+        <button className="btn" disabled={saving} onClick={forceServerSync}>Sync Results Now (Server)</button>
         <button className="btn" disabled={saving} onClick={recomputeWeek}>{saving?"Recomputing…":"Recompute Week Scores"}</button>
       </div>
       {msg && <div className="text-emerald-700 text-sm">{msg}</div>}

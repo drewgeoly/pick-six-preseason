@@ -1,5 +1,5 @@
 // src/lib/weeks.ts
-import { collection, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
 
 // Fallback when we cannot determine a better week
@@ -30,6 +30,14 @@ export function readLastWeekId(leagueId: string): string | null {
 // Try to pick a sensible default week based on league weeks collection
 export async function getDefaultWeekId(leagueId: string): Promise<string> {
   try {
+    // Prefer league.currentWeekId if set
+    try {
+      const lref = doc(db, "leagues", leagueId);
+      const lsnap = await getDoc(lref);
+      const cur = (lsnap.data() as any)?.currentWeekId as (string | undefined);
+      if (cur && typeof cur === 'string') return cur;
+    } catch {}
+
     const snap = await getDocs(collection(db, "leagues", leagueId, "weeks"));
     if (snap.empty) return FALLBACK_WEEK_ID;
     const weeks = snap.docs.map((d) => {

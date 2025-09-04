@@ -16,8 +16,8 @@ export default function AdminScoring() {
   useEffect(() => {
     if (!leagueId) return;
     (async () => {
-      const sref = doc(db, "leagues", leagueId, "settings");
-      const ss = await getDoc(sref);
+      const leagueRef = doc(db, "leagues", leagueId);
+      const ss = await getDoc(leagueRef);
       const s = (ss.data() as any) || {};
       setPointsPerCorrect(Number(s.pointsPerCorrect ?? 1));
     })();
@@ -26,7 +26,7 @@ export default function AdminScoring() {
   async function saveSettings() {
     if (!leagueId) return;
     setSaving(true); setMsg("");
-    await setDoc(doc(db, "leagues", leagueId, "settings"), {
+    await setDoc(doc(db, "leagues", leagueId), {
       pointsPerCorrect: Number(pointsPerCorrect) || 1,
       tiebreakerType: "point_differential",
       updatedAt: serverTimestamp(),
@@ -39,8 +39,8 @@ export default function AdminScoring() {
     if (!leagueId) return;
     setSaving(true); setMsg("");
     const wref = doc(db, "leagues", leagueId, "weeks", weekId);
-    const sref = doc(db, "leagues", leagueId, "settings");
-    const [ws, ss] = await Promise.all([getDoc(wref), getDoc(sref)]);
+    const leagueRef = doc(db, "leagues", leagueId);
+    const [ws, ss] = await Promise.all([getDoc(wref), getDoc(leagueRef)]);
     const settings = (ss.data() as any) || {};
     const tiebreakerEventKey = (ws.data() as any)?.tiebreakerEventKey || undefined;
 
